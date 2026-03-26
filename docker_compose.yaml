@@ -1,0 +1,33 @@
+services:
+  glpi-mysql:
+    image: mysql:9.1.0
+    restart: always
+    container_name: glpi_db
+    volumes:
+      - glpi-mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234abc@
+      MYSQL_DATABASE: ${GLPI_DB_NAME}
+      MYSQL_USER: ${GLPI_DB_USER}
+      MYSQL_PASSWORD: ${GLPI_DB_PASSWORD}
+
+
+  glpi-web:
+    image: elestio/glpi:latest
+    restart: always
+    container_name: glpi-www
+    ports:
+      - "82:80"
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - glpi-www-data:/var/www/html/glpi
+      - glpi-data:/var/glpi
+    environment:
+      - TIMEZONE=America/Sao_Paulo
+
+
+volumes:
+  glpi-mysql-data:
+  glpi-www-data:
+  glpi-data:
