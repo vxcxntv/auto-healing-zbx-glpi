@@ -5,5 +5,6 @@ import { GlpiService } from './glpi.service';
 @Module({
   imports: [HttpModule],
   providers: [GlpiService],
+  exports: [GlpiService],
 })
 export class GlpiModule {}
