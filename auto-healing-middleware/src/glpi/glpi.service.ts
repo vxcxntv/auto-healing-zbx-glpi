@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
@@ -28,21 +29,34 @@ export class GlpiService {
   }
 
   async createTicket(title: string, content: string) {
-    if (!this.accessToken) await this.getAuthToken();
+    try {
+      if (!this.accessToken) await this.getAuthToken();
 
-    const url = `${process.env.GLPI_BASE_URL}/ticket`;
-    const body = {
-      input: {
+      const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket`;
+
+      const body = {
         name: title,
         content: content,
-        status: 1, // Novo
-      },
-    };
+        type: 1,
+      };
 
-    return firstValueFrom(
-      this.httpService.post(url, body, {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-      }),
-    );
+      const response = await firstValueFrom(
+        this.httpService.post(url, body, {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+
+      console.log('Chamado criado com sucesso:', response.data.id);
+      return response.data;
+    } catch (error) {
+      console.error(
+        'Erro na API do GLPI:',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
   }
 }
