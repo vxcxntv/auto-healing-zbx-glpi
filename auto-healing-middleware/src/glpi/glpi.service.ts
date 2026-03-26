@@ -30,7 +30,7 @@ export class GlpiService {
   async createTicket(title: string, content: string) {
     if (!this.accessToken) await this.getAuthToken();
 
-    const url = `${process.env.GLPI_BASE_URL}/Ticket`;
+    const url = `${process.env.GLPI_BASE_URL}/ticket`;
     const body = {
       input: {
         name: title,
