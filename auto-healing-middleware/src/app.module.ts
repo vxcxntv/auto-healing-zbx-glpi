@@ -3,10 +3,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GlpiModule } from './glpi/glpi.module';
 import { WebhookController } from './webhook/webhook.controller';
+import { HealingService } from './automation/healing/healing.service';
 
 @Module({
   imports: [GlpiModule],
   controllers: [AppController, WebhookController],
-  providers: [AppService],
+  providers: [AppService, HealingService],
 })
 export class AppModule {}
