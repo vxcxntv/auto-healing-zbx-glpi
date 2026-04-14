@@ -14,23 +14,31 @@ export class WebhookController {
 
   @Post('zabbix')
   async handleZabbixAlert(@Body() alertData: any) {
+    const host = alertData.HostName;
+    const ip = alertData.HostIP;
+    const service = alertData.Service;
+    const triggerName = alertData.Subject;
+
+    console.log(
+      `Iniciando Auto-healing para ${host} (${ip}) - Serviço: ${service}`,
+    );
+
     const ticket = await this.glpiService.createTicket(
-      `[AUTO-HEALING] Falha em ${alertData.host}`,
-      `O serviço ${alertData.service_to_fix} parou. Tentando reinicialização automática.`,
+      `[AUTO-HEALING] Falha Detectada: ${host}`,
+      `Alerta: ${triggerName}. O middleware tentará reiniciar o serviço ${service} no IP ${ip}.`,
     );
 
     try {
-      const command = `sudo systemctl restart ${alertData.service_to_fix}`;
-      const result = await this.healingService.executeRemoteCommand(
-        alertData.ip,
-        command,
-      );
+      //comando de autocura via SSH
+      const command = `sudo systemctl restart ${service}`;
+      await this.healingService.executeRemoteCommand(ip, command);
 
-      console.log('Cura executada com sucesso:', result);
-
-      return { status: 'success', ticketId: ticket.id };
+      //se sucesso
+      console.log(`Sucesso ao reiniciar ${service} em ${host}`);
+      return { status: 'healed', ticketId: ticket.id };
     } catch (error) {
-      console.error('Falha na autocura:', error.message);
+      console.error(`Erro na autocura de ${host}:`, error.message);
+      //se falha
       return { status: 'failed', error: error.message };
     }
   }
