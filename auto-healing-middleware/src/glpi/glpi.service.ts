@@ -60,18 +60,44 @@ export class GlpiService {
     }
   }
 
-  async solveTicket(ticketId: number, observation: string) {
-    const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Solution`;
-    const body = {
-      content: `Solução aplicada automaticamente pelo Middleware: ${observation}`,
-      status: 2, // status "Solucionado" no GLPI
-    };
+  async solveTicket(ticketId: number, solutionText: string) {
+    try {
+      if (!this.accessToken) await this.getAuthToken();
 
-    return firstValueFrom(
-      this.httpService.post(url, body, {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-      }),
-    );
+      // adicionar a solução ao chamado
+      const solutionUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Solution`;
+      const solutionBody = {
+        content: solutionText,
+        status: 3, // status da solução
+      };
+
+      await firstValueFrom(
+        this.httpService.post(solutionUrl, solutionBody, {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }),
+      );
+
+      // atualizar o status do chamado para solucionado
+      const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
+      const ticketUpdateBody = {
+        status: 5,
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.patch(ticketUrl, ticketUpdateBody, {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }),
+      );
+
+      console.log(`Chamado ${ticketId} solucionado com sucesso.`);
+      return response.data;
+    } catch (error) {
+      console.error(
+        'Erro ao solucionar chamado no GLPI:',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
   }
 
   async escalateTicket(ticketId: number, errorMessage: string) {

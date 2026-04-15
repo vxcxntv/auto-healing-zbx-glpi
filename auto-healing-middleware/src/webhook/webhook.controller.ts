@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -35,7 +36,14 @@ export class WebhookController {
 
       //se sucesso
       console.log(`Sucesso ao reiniciar ${service} em ${host}`);
-      return { status: 'healed', ticketId: ticket.id };
+      const message = `O serviço ${service} foi reiniciado com sucesso via automação.`;
+      await this.glpiService.solveTicket(ticket.id, message);
+
+      return {
+        status: 'healed',
+        message: 'Cura aplicada e chamado solucionado',
+        ticketId: ticket.id,
+      };
     } catch (error) {
       console.error(`Erro na autocura de ${host}:`, error.message);
       //se falha
