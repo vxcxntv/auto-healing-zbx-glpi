@@ -59,4 +59,33 @@ export class GlpiService {
       throw error;
     }
   }
+
+  async solveTicket(ticketId: number, observation: string) {
+    const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Solution`;
+    const body = {
+      content: `Solução aplicada automaticamente pelo Middleware: ${observation}`,
+      status: 2, // status "Solucionado" no GLPI
+    };
+
+    return firstValueFrom(
+      this.httpService.post(url, body, {
+        headers: { Authorization: `Bearer ${this.accessToken}` },
+      }),
+    );
+  }
+
+  async escalateTicket(ticketId: number, errorMessage: string) {
+    const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
+    const body = {
+      status: 2, // status atribuído (Em atendimento)
+      groups_id_assign: 1, // id do grupo no glpi
+      content: `FALHA NA AUTOCURA: ${errorMessage}. Encaminhado para análise urgente.`,
+    };
+
+    return firstValueFrom(
+      this.httpService.patch(url, body, {
+        headers: { Authorization: `Bearer ${this.accessToken}` },
+      }),
+    );
+  }
 }
