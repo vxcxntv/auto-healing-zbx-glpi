@@ -14,4 +14,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3005
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "dist/main.js"]
