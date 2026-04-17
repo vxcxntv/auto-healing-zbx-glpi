@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AiopsService } from './aiops.service';
+import { AiOpsService } from './aiops.service';
 
 @Module({
-  providers: [AiopsService]
+  providers: [AiOpsService],
 })
-export class AiopsModule {}
+export class AiOpsModule {}
