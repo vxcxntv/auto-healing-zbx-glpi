@@ -101,17 +101,41 @@ export class GlpiService {
   }
 
   async escalateTicket(ticketId: number, errorMessage: string) {
-    const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
-    const body = {
-      status: 2, // status atribuído (Em atendimento)
-      groups_id_assign: 1, // id do grupo no glpi
-      content: `FALHA NA AUTOCURA: ${errorMessage}. Encaminhado para análise urgente.`,
-    };
+    try {
+      if (!this.accessToken) await this.getAuthToken();
 
-    return firstValueFrom(
-      this.httpService.patch(url, body, {
-        headers: { Authorization: `Bearer ${this.accessToken}` },
-      }),
-    );
+      const followupUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
+      const followupBody = {
+        content: `⚠️ **FALHA NA AUTOCURA:** O middleware tentou reiniciar o serviço, mas encontrou o erro: <br><code>${errorMessage}</code><br>Encaminhando para análise humana.`,
+      };
+
+      await firstValueFrom(
+        this.httpService.post(followupUrl, followupBody, {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }),
+      );
+
+      // atualizar o status para atendimento
+      const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
+      const ticketUpdateBody = {
+        status: 2,
+        groups_id_assign: 1,
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.patch(ticketUrl, ticketUpdateBody, {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }),
+      );
+
+      console.warn(`Chamado ${ticketId} escalonado devido a falha na cura.`);
+      return response.data;
+    } catch (error) {
+      console.error(
+        'Erro ao escalonar chamado no GLPI:',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
   }
 }

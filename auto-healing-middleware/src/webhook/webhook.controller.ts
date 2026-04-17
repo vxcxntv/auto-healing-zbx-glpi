@@ -47,7 +47,9 @@ export class WebhookController {
     } catch (error) {
       console.error(`Erro na autocura de ${host}:`, error.message);
       //se falha
-      return { status: 'failed', error: error.message };
+      await this.glpiService.escalateTicket(ticket.id, error.message);
+
+      return { status: 'failed_and_escalated', error: error.message };
     }
   }
 }
