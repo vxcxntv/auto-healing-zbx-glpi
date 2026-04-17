@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { GlpiModule } from './glpi/glpi.module';
 import { WebhookController } from './webhook/webhook.controller';
 import { HealingService } from './automation/healing/healing.service';
+import { AiopsModule } from './aiops/aiops.module';
 
 @Module({
-  imports: [GlpiModule],
+  imports: [GlpiModule, AiopsModule],
   controllers: [AppController, WebhookController],
   providers: [AppService, HealingService],
 })

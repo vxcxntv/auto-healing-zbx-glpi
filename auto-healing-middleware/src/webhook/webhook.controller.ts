@@ -5,11 +5,13 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { GlpiService } from '../glpi/glpi.service';
 import { HealingService } from '../automation/healing/healing.service';
+import { AiOpsService } from '../aiops/aiops.service';
 
 @Controller('webhook')
 export class WebhookController {
   constructor(
     private readonly glpiService: GlpiService,
+    private readonly aiOpsService: AiOpsService,
     private readonly healingService: HealingService,
   ) {}
 
@@ -27,6 +29,17 @@ export class WebhookController {
     const ticket = await this.glpiService.createTicket(
       `[AUTO-HEALING] Falha Detectada: ${host}`,
       `Alerta: ${triggerName}. O middleware tentará reiniciar o serviço ${service} no IP ${ip}.`,
+    );
+
+    const aiAnalysis = await this.aiOpsService.analyzeIncident(
+      alertData.Subject,
+      host,
+      service,
+    );
+
+    await this.glpiService.addFollowup(
+      ticket.id,
+      `🤖 **Análise Inteligente (AIOps):**<br>${aiAnalysis}`,
     );
 
     try {

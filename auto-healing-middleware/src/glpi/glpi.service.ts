@@ -106,7 +106,7 @@ export class GlpiService {
 
       const followupUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
       const followupBody = {
-        content: `⚠️ **FALHA NA AUTOCURA:** O middleware tentou reiniciar o serviço, mas encontrou o erro: <br><code>${errorMessage}</code><br>Encaminhando para análise humana.`,
+        content: `⚠️ FALHA: O middleware tentou reiniciar o serviço, mas encontrou o erro: <br><code>${errorMessage}</code><br>Encaminhando para análise humana.`,
       };
 
       await firstValueFrom(
@@ -133,6 +133,37 @@ export class GlpiService {
     } catch (error) {
       console.error(
         'Erro ao escalonar chamado no GLPI:',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+
+  async addFollowup(ticketId: number, content: string) {
+    try {
+      if (!this.accessToken) await this.getAuthToken();
+
+      const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
+
+      const body = {
+        content: content, // conteúdo do acompanhamento
+        is_private: false, // define se o acompanhamento é público ou privado
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, body, {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+
+      console.log(`Acompanhamento adicionado ao chamado ${ticketId}.`);
+      return response.data;
+    } catch (error) {
+      console.error(
+        'Erro ao adicionar acompanhamento no GLPI:',
         error.response?.data || error.message,
       );
       throw error;
