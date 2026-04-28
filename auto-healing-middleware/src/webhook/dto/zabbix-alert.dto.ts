@@ -1,11 +1,11 @@
-import { IsIP, IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class ZabbixAlertDto {
   @IsString()
   @IsNotEmpty()
   HostName: string;
 
-  @IsIP()
+  @IsString()
   @IsNotEmpty()
   HostIP: string;
 
