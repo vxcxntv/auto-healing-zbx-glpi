@@ -109,9 +109,26 @@ export class GlpiService {
     }
   }
 
+  private async assignGroupToTicket(
+    ticketId: number,
+    groupId: number,
+  ): Promise<void> {
+    const actorUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Actor`;
+
+    await firstValueFrom(
+      this.httpService.post(
+        actorUrl,
+        { type: 2, itemtype: 'Group', items_id: groupId, use_notification: 1 },
+        { headers: { Authorization: `Bearer ${this.accessToken}` } },
+      ),
+    );
+  }
+
   async escalateTicket(ticketId: number, errorMessage: string): Promise<void> {
     try {
       await this.ensureValidToken();
+
+      const groupId = Number(process.env.GLPI_ESCALATION_GROUP_ID ?? 1);
 
       const followupUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
 
@@ -125,17 +142,21 @@ export class GlpiService {
         ),
       );
 
+      await this.assignGroupToTicket(ticketId, groupId);
+
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
 
       await firstValueFrom(
         this.httpService.patch(
           ticketUrl,
-          { status: 2, groups_id_assign: 1 },
+          { status: 2 },
           { headers: { Authorization: `Bearer ${this.accessToken}` } },
         ),
       );
 
-      console.warn(`Chamado ${ticketId} escalonado devido a falha na cura.`);
+      console.warn(
+        `Chamado ${ticketId} escalonado para o grupo ${groupId} devido a falha na cura.`,
+      );
     } catch (error) {
       console.error(
         'Erro ao escalonar chamado no GLPI:',
