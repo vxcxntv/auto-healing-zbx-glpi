@@ -109,21 +109,6 @@ export class GlpiService {
     }
   }
 
-  private async assignGroupToTicket(
-    ticketId: number,
-    groupId: number,
-  ): Promise<void> {
-    const actorUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Actor`;
-
-    await firstValueFrom(
-      this.httpService.post(
-        actorUrl,
-        { type: 2, itemtype: 'Group', items_id: groupId, use_notification: 1 },
-        { headers: { Authorization: `Bearer ${this.accessToken}` } },
-      ),
-    );
-  }
-
   async escalateTicket(ticketId: number, errorMessage: string): Promise<void> {
     try {
       await this.ensureValidToken();
@@ -142,14 +127,19 @@ export class GlpiService {
         ),
       );
 
-      await this.assignGroupToTicket(ticketId, groupId);
-
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
 
       await firstValueFrom(
         this.httpService.patch(
           ticketUrl,
-          { status: 2 },
+          {
+            status: 2,
+            _actors: {
+              assign: [
+                { itemtype: 'Group', items_id: groupId, use_notification: 1 },
+              ],
+            },
+          },
           { headers: { Authorization: `Bearer ${this.accessToken}` } },
         ),
       );
