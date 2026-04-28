@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, ConflictException } from '@nestjs/common';
 import { GlpiService } from '../glpi/glpi.service';
 import { HealingService } from '../automation/healing/healing.service';
 import { AiOpsService } from '../aiops/aiops.service';
@@ -6,6 +6,8 @@ import { ZabbixAlertDto } from './dto/zabbix-alert.dto';
 
 @Controller('webhook')
 export class WebhookController {
+  private readonly activeHealings = new Set<string>();
+
   constructor(
     private readonly glpiService: GlpiService,
     private readonly aiOpsService: AiOpsService,
@@ -21,46 +23,60 @@ export class WebhookController {
       Subject: triggerName,
     } = alertData;
 
-    console.log(
-      `Iniciando Auto-healing para ${host} (${ip}) - Serviço: ${service}`,
-    );
+    const healingKey = `${ip}:${service}`;
 
-    const ticket = await this.glpiService.createTicket(
-      `[AUTO-HEALING] Falha Detectada: ${host}`,
-      `Alerta: ${triggerName}. O middleware tentará reiniciar o serviço ${service} no IP ${ip}.`,
-    );
+    if (this.activeHealings.has(healingKey)) {
+      throw new ConflictException(
+        `Auto-healing já em andamento para ${service} em ${ip}`,
+      );
+    }
 
-    const aiAnalysis = await this.aiOpsService.analyzeIncident(
-      triggerName,
-      host,
-      service,
-    );
-
-    await this.glpiService.addFollowup(
-      ticket.id,
-      `🤖 **Análise Inteligente (AIOps):**<br>${aiAnalysis}`,
-    );
+    this.activeHealings.add(healingKey);
 
     try {
-      const command = `sudo systemctl restart ${service}`;
-      await this.healingService.executeRemoteCommand(ip, command);
+      console.log(
+        `Iniciando Auto-healing para ${host} (${ip}) - Serviço: ${service}`,
+      );
 
-      console.log(`Sucesso ao reiniciar ${service} em ${host}`);
-      const message = `O serviço ${service} foi reiniciado com sucesso via automação.`;
-      await this.glpiService.solveTicket(ticket.id, message);
+      const ticket = await this.glpiService.createTicket(
+        `[AUTO-HEALING] Falha Detectada: ${host}`,
+        `Alerta: ${triggerName}. O middleware tentará reiniciar o serviço ${service} no IP ${ip}.`,
+      );
 
-      return {
-        status: 'healed',
-        message: 'Cura aplicada e chamado solucionado',
-        ticketId: ticket.id,
-      };
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error(`Erro na autocura de ${host}:`, errorMessage);
-      await this.glpiService.escalateTicket(ticket.id, errorMessage);
+      const aiAnalysis = await this.aiOpsService.analyzeIncident(
+        triggerName,
+        host,
+        service,
+      );
 
-      return { status: 'failed_and_escalated', error: errorMessage };
+      await this.glpiService.addFollowup(
+        ticket.id,
+        `🤖 **Análise Inteligente (AIOps):**<br>${aiAnalysis}`,
+      );
+
+      try {
+        const command = `sudo systemctl restart ${service}`;
+        await this.healingService.executeRemoteCommand(ip, command);
+
+        console.log(`Sucesso ao reiniciar ${service} em ${host}`);
+        const message = `O serviço ${service} foi reiniciado com sucesso via automação.`;
+        await this.glpiService.solveTicket(ticket.id, message);
+
+        return {
+          status: 'healed',
+          message: 'Cura aplicada e chamado solucionado',
+          ticketId: ticket.id,
+        };
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        console.error(`Erro na autocura de ${host}:`, errorMessage);
+        await this.glpiService.escalateTicket(ticket.id, errorMessage);
+
+        return { status: 'failed_and_escalated', error: errorMessage };
+      }
+    } finally {
+      this.activeHealings.delete(healingKey);
     }
   }
 }

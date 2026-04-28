@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -8,13 +7,20 @@ export interface GlpiTicket {
   id: number;
 }
 
+const TOKEN_EXPIRY_BUFFER_MS = 60_000;
+
 @Injectable()
 export class GlpiService {
-  private accessToken: string;
+  private accessToken: string = '';
+  private tokenExpiresAt: number = 0;
 
   constructor(private readonly httpService: HttpService) {}
 
-  async getAuthToken() {
+  private isTokenExpired(): boolean {
+    return !this.accessToken || Date.now() >= this.tokenExpiresAt;
+  }
+
+  async getAuthToken(): Promise<void> {
     const url = `${process.env.GLPI_BASE_URL}/token`;
     const payload = {
       grant_type: 'password',
@@ -27,13 +33,19 @@ export class GlpiService {
 
     const response = await firstValueFrom(this.httpService.post(url, payload));
 
-    this.accessToken = response.data.access_token;
-    return this.accessToken;
+    const expiresIn: number = (response.data.expires_in as number) ?? 3600;
+    this.accessToken = response.data.access_token as string;
+    this.tokenExpiresAt =
+      Date.now() + expiresIn * 1000 - TOKEN_EXPIRY_BUFFER_MS;
+  }
+
+  private async ensureValidToken(): Promise<void> {
+    if (this.isTokenExpired()) await this.getAuthToken();
   }
 
   async createTicket(title: string, content: string): Promise<GlpiTicket> {
     try {
-      if (!this.accessToken) await this.getAuthToken();
+      await this.ensureValidToken();
 
       const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket`;
 
@@ -65,18 +77,16 @@ export class GlpiService {
 
   async solveTicket(ticketId: number, solutionText: string): Promise<void> {
     try {
-      if (!this.accessToken) await this.getAuthToken();
+      await this.ensureValidToken();
 
       const solutionUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Solution`;
-      const solutionBody = {
-        content: solutionText,
-        status: 3,
-      };
 
       await firstValueFrom(
-        this.httpService.post(solutionUrl, solutionBody, {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-        }),
+        this.httpService.post(
+          solutionUrl,
+          { content: solutionText, status: 3 },
+          { headers: { Authorization: `Bearer ${this.accessToken}` } },
+        ),
       );
 
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
@@ -85,9 +95,7 @@ export class GlpiService {
         this.httpService.patch(
           ticketUrl,
           { status: 5 },
-          {
-            headers: { Authorization: `Bearer ${this.accessToken}` },
-          },
+          { headers: { Authorization: `Bearer ${this.accessToken}` } },
         ),
       );
 
@@ -103,17 +111,18 @@ export class GlpiService {
 
   async escalateTicket(ticketId: number, errorMessage: string): Promise<void> {
     try {
-      if (!this.accessToken) await this.getAuthToken();
+      await this.ensureValidToken();
 
       const followupUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
-      const followupBody = {
-        content: `⚠️ FALHA: O middleware tentou reiniciar o serviço, mas encontrou o erro: <br><code>${errorMessage}</code><br>Encaminhando para análise humana.`,
-      };
 
       await firstValueFrom(
-        this.httpService.post(followupUrl, followupBody, {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-        }),
+        this.httpService.post(
+          followupUrl,
+          {
+            content: `⚠️ FALHA: O middleware tentou reiniciar o serviço, mas encontrou o erro: <br><code>${errorMessage}</code><br>Encaminhando para análise humana.`,
+          },
+          { headers: { Authorization: `Bearer ${this.accessToken}` } },
+        ),
       );
 
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
@@ -122,9 +131,7 @@ export class GlpiService {
         this.httpService.patch(
           ticketUrl,
           { status: 2, groups_id_assign: 1 },
-          {
-            headers: { Authorization: `Bearer ${this.accessToken}` },
-          },
+          { headers: { Authorization: `Bearer ${this.accessToken}` } },
         ),
       );
 
@@ -140,22 +147,21 @@ export class GlpiService {
 
   async addFollowup(ticketId: number, content: string): Promise<void> {
     try {
-      if (!this.accessToken) await this.getAuthToken();
+      await this.ensureValidToken();
 
       const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
 
-      const body = {
-        content: content,
-        is_private: false,
-      };
-
       await firstValueFrom(
-        this.httpService.post(url, body, {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
+        this.httpService.post(
+          url,
+          { content: content, is_private: false },
+          {
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+            },
           },
-        }),
+        ),
       );
 
       console.log(`Acompanhamento adicionado ao chamado ${ticketId}.`);
