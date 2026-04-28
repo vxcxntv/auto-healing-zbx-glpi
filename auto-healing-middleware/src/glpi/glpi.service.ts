@@ -129,20 +129,45 @@ export class GlpiService {
 
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
 
-      await firstValueFrom(
+      const patchResponse = await firstValueFrom(
         this.httpService.patch(
           ticketUrl,
-          {
-            status: 2,
-            _actors: {
-              assign: [
-                { itemtype: 'Group', items_id: groupId, use_notification: 1 },
-              ],
-            },
-          },
+          { status: 2 },
           { headers: { Authorization: `Bearer ${this.accessToken}` } },
         ),
       );
+
+      console.log('PATCH ticket response:', JSON.stringify(patchResponse.data));
+
+      const groupTicketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Group_Ticket`;
+
+      try {
+        const groupResponse = await firstValueFrom(
+          this.httpService.post(
+            groupTicketUrl,
+            { groups_id: groupId, type: 2, use_notification: 1 },
+            { headers: { Authorization: `Bearer ${this.accessToken}` } },
+          ),
+        );
+        console.log(
+          'Group_Ticket response:',
+          JSON.stringify(groupResponse.data),
+        );
+      } catch (groupError) {
+        console.error(
+          'Erro ao atribuir grupo via Group_Ticket:',
+          groupError.response?.data || groupError.message,
+          '— tentando via _groups_id_assign no PATCH',
+        );
+
+        await firstValueFrom(
+          this.httpService.patch(
+            ticketUrl,
+            { _groups_id_assign: groupId },
+            { headers: { Authorization: `Bearer ${this.accessToken}` } },
+          ),
+        );
+      }
 
       console.warn(
         `Chamado ${ticketId} escalonado para o grupo ${groupId} devido a falha na cura.`,
