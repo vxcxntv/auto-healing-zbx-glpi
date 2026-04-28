@@ -1,9 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+
+export interface GlpiTicket {
+  id: number;
+}
 
 @Injectable()
 export class GlpiService {
@@ -28,7 +31,7 @@ export class GlpiService {
     return this.accessToken;
   }
 
-  async createTicket(title: string, content: string) {
+  async createTicket(title: string, content: string): Promise<GlpiTicket> {
     try {
       if (!this.accessToken) await this.getAuthToken();
 
@@ -50,7 +53,7 @@ export class GlpiService {
       );
 
       console.log('Chamado criado com sucesso:', response.data.id);
-      return response.data;
+      return response.data as GlpiTicket;
     } catch (error) {
       console.error(
         'Erro na API do GLPI:',
@@ -60,15 +63,14 @@ export class GlpiService {
     }
   }
 
-  async solveTicket(ticketId: number, solutionText: string) {
+  async solveTicket(ticketId: number, solutionText: string): Promise<void> {
     try {
       if (!this.accessToken) await this.getAuthToken();
 
-      // adicionar a solução ao chamado
       const solutionUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Solution`;
       const solutionBody = {
         content: solutionText,
-        status: 3, // status da solução
+        status: 3,
       };
 
       await firstValueFrom(
@@ -77,20 +79,19 @@ export class GlpiService {
         }),
       );
 
-      // atualizar o status do chamado para solucionado
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
-      const ticketUpdateBody = {
-        status: 5,
-      };
 
-      const response = await firstValueFrom(
-        this.httpService.patch(ticketUrl, ticketUpdateBody, {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-        }),
+      await firstValueFrom(
+        this.httpService.patch(
+          ticketUrl,
+          { status: 5 },
+          {
+            headers: { Authorization: `Bearer ${this.accessToken}` },
+          },
+        ),
       );
 
       console.log(`Chamado ${ticketId} solucionado com sucesso.`);
-      return response.data;
     } catch (error) {
       console.error(
         'Erro ao solucionar chamado no GLPI:',
@@ -100,7 +101,7 @@ export class GlpiService {
     }
   }
 
-  async escalateTicket(ticketId: number, errorMessage: string) {
+  async escalateTicket(ticketId: number, errorMessage: string): Promise<void> {
     try {
       if (!this.accessToken) await this.getAuthToken();
 
@@ -115,21 +116,19 @@ export class GlpiService {
         }),
       );
 
-      // atualizar o status para atendimento
       const ticketUrl = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}`;
-      const ticketUpdateBody = {
-        status: 2,
-        groups_id_assign: 1,
-      };
 
-      const response = await firstValueFrom(
-        this.httpService.patch(ticketUrl, ticketUpdateBody, {
-          headers: { Authorization: `Bearer ${this.accessToken}` },
-        }),
+      await firstValueFrom(
+        this.httpService.patch(
+          ticketUrl,
+          { status: 2, groups_id_assign: 1 },
+          {
+            headers: { Authorization: `Bearer ${this.accessToken}` },
+          },
+        ),
       );
 
       console.warn(`Chamado ${ticketId} escalonado devido a falha na cura.`);
-      return response.data;
     } catch (error) {
       console.error(
         'Erro ao escalonar chamado no GLPI:',
@@ -139,18 +138,18 @@ export class GlpiService {
     }
   }
 
-  async addFollowup(ticketId: number, content: string) {
+  async addFollowup(ticketId: number, content: string): Promise<void> {
     try {
       if (!this.accessToken) await this.getAuthToken();
 
       const url = `${process.env.GLPI_BASE_URL}/Assistance/Ticket/${ticketId}/Timeline/Followup`;
 
       const body = {
-        content: content, // conteúdo do acompanhamento
-        is_private: false, // define se o acompanhamento é público ou privado
+        content: content,
+        is_private: false,
       };
 
-      const response = await firstValueFrom(
+      await firstValueFrom(
         this.httpService.post(url, body, {
           headers: {
             Authorization: `Bearer ${this.accessToken}`,
@@ -160,7 +159,6 @@ export class GlpiService {
       );
 
       console.log(`Acompanhamento adicionado ao chamado ${ticketId}.`);
-      return response.data;
     } catch (error) {
       console.error(
         'Erro ao adicionar acompanhamento no GLPI:',
