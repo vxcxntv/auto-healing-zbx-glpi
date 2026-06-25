@@ -1,4 +1,10 @@
-import { Controller, Post, Body, ConflictException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { GlpiService } from '../glpi/glpi.service';
 import { HealingService } from '../automation/healing/healing.service';
 import { AiOpsService } from '../aiops/aiops.service';
@@ -6,6 +12,7 @@ import { ZabbixAlertDto } from './dto/zabbix-alert.dto';
 
 @Controller('webhook')
 export class WebhookController {
+  private readonly logger = new Logger(WebhookController.name);
   private readonly activeHealings = new Set<string>();
 
   constructor(
@@ -23,9 +30,21 @@ export class WebhookController {
       Subject: triggerName,
     } = alertData;
 
+    this.logger.log('=== Novo alerta recebido do Zabbix ===');
+    this.logger.log(
+      `Payload recebido (webhook /zabbix):\n${JSON.stringify(alertData, null, 2)}`,
+    );
+    this.logger.log(`HostName : ${host}`);
+    this.logger.log(`HostIP   : ${ip}`);
+    this.logger.log(`Service  : ${service}`);
+    this.logger.log(`Subject  : ${triggerName}`);
+
     const healingKey = `${ip}:${service}`;
 
     if (this.activeHealings.has(healingKey)) {
+      this.logger.warn(
+        `Auto-healing já em andamento para ${service} em ${ip} — requisição ignorada (409).`,
+      );
       throw new ConflictException(
         `Auto-healing já em andamento para ${service} em ${ip}`,
       );
@@ -34,7 +53,7 @@ export class WebhookController {
     this.activeHealings.add(healingKey);
 
     try {
-      console.log(
+      this.logger.log(
         `Iniciando Auto-healing para ${host} (${ip}) - Serviço: ${service}`,
       );
 
@@ -42,7 +61,9 @@ export class WebhookController {
         `[AUTO-HEALING] Falha Detectada: ${host}`,
         `Alerta: ${triggerName}. O middleware tentará reiniciar o serviço ${service} no IP ${ip}.`,
       );
+      this.logger.log(`Chamado GLPI criado: #${ticket.id}`);
 
+      this.logger.log('Solicitando análise inteligente (AIOps/Gemini)...');
       const aiAnalysis = await this.aiOpsService.analyzeIncident(
         triggerName,
         host,
@@ -53,14 +74,24 @@ export class WebhookController {
         ticket.id,
         `🤖 **Análise Inteligente (AIOps):**<br>${aiAnalysis}`,
       );
+      this.logger.log(`Análise da IA anexada ao chamado #${ticket.id}`);
 
       try {
-        const command = `sudo systemctl restart ${service}`;
-        await this.healingService.executeRemoteCommand(ip, command);
+        const command = `sudo systemctl restart ${service} && systemctl is-active ${service}`;
+        this.logger.log(
+          `Disparando autocura via SSH em ${host} (${ip}): "${command}"`,
+        );
+        const output = await this.healingService.executeRemoteCommand(
+          ip,
+          command,
+        );
 
-        console.log(`Sucesso ao reiniciar ${service} em ${host}`);
+        this.logger.log(
+          `Sucesso ao reiniciar ${service} em ${host}. Resposta do host: "${output.trim() || '(sem saída)'}"`,
+        );
         const message = `O serviço ${service} foi reiniciado com sucesso via automação.`;
         await this.glpiService.solveTicket(ticket.id, message);
+        this.logger.log(`Chamado #${ticket.id} solucionado (status healed).`);
 
         return {
           status: 'healed',
@@ -70,13 +101,17 @@ export class WebhookController {
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.error(`Erro na autocura de ${host}:`, errorMessage);
+        this.logger.error(`Erro na autocura de ${host}: ${errorMessage}`);
         await this.glpiService.escalateTicket(ticket.id, errorMessage);
+        this.logger.warn(
+          `Chamado #${ticket.id} escalonado para análise humana.`,
+        );
 
         return { status: 'failed_and_escalated', error: errorMessage };
       }
     } finally {
       this.activeHealings.delete(healingKey);
+      this.logger.log(`Trava de concorrência liberada para ${healingKey}.`);
     }
   }
 }
